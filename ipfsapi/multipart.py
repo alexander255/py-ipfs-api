@@ -228,18 +228,21 @@ class BufferedGenerator(object):
             The file to break into chunks
             (must be an open file or have the ``readinto`` method)
         """
-        fsize = utils.file_size(fp)
-        offset = 0
         if hasattr(fp, 'readinto'):
-            while offset < fsize:
-                nb = fp.readinto(self._internal)
-                yield self.buf[:nb]
-                offset += nb
+            while True:
+                count = fp.readinto(self._internal)
+                if count > 0:
+                    yield self.buf[:count]
+                else:
+                    break
         else:
-            while offset < fsize:
-                nb = min(self.chunk_size, fsize - offset)
-                yield fp.read(nb)
-                offset += nb
+            while True:
+                data  = fp.read(self.chunk_size)
+                count = len(data)
+                if count > 0:
+                    yield data
+                else:
+                    break
 
     def gen_chunks(self, gen):
         """Generates byte chunks of a given size.

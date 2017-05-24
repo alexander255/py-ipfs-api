@@ -7,8 +7,6 @@ import mimetypes
 import os
 from functools import wraps
 
-import six
-
 
 def guess_mimetype(filename):
     """Guesses the mimetype of a file based on the given ``filename``.
@@ -93,28 +91,6 @@ def clean_files(files):
             yield clean_file(f)
     else:
         yield clean_file(files)
-
-
-def file_size(f):
-    """Returns the size of a file in bytes.
-
-    Raises
-    ------
-    OSError : Accessing the given file path failed
-
-    Parameters
-    ----------
-    f : io.IOBase | str
-        The file path or object for which the size should be determined
-    """
-    if isinstance(f, (six.string_types, six.text_type)):
-        return os.path.getsize(f)
-    else:
-        cur = f.tell()
-        f.seek(0, 2)
-        size = f.tell()
-        f.seek(cur)
-        return size
 
 
 class return_field(object):

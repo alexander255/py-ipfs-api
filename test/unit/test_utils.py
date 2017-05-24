@@ -111,16 +111,6 @@ class TestUtils(unittest.TestCase):
             # Closing files/stringIO objects after test assertions.
             tup[0].close()
 
-    def test_file_size(self):
-        """Tests utils.file_size().
-
-        This test relies on the content size of the file 'fsdfgh'
-        located in 'test/functional/fake_dir' not being modified.
-        """
-        path = os.path.join(os.path.dirname(__file__),
-                            "..", "functional", "fake_dir", "fsdfgh")
-        assert utils.file_size(path) == 8
-
     def test_return_field_init(self):
         """Tests utils.return_field.__init__()."""
         return_field = utils.return_field('Hash')
