@@ -1,4 +1,4 @@
-# -*- encoding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Common base functionality of all IPFS-API HTTP backends
 """
@@ -146,7 +146,7 @@ class HTTPClientBase(object):
                              stream=stream, headers=headers, data=data)
 
     @pass_defaults
-    def download(self, path, args=[], filepath=None, opts={}, compress=True,
+    def download(self, path, args=[], filepath=None, opts={}, compress=False,
                  headers={}):
         """Makes a request to the IPFS daemon to download a file.
 
@@ -175,7 +175,11 @@ class HTTPClientBase(object):
             Query string paramters to be sent along with the HTTP request
         compress : bool
             Whether the downloaded file should be GZip compressed by the
-            daemon before being sent to the client
+            daemon before being sent to the client; do not enable this when
+            accessing the daemon over a fast connection or ``localhost``:
+            The daemon won't be able to generate the compressed data fast
+            enough to sature the link – resulting in bad performance and cooked
+            CPUs
         """
         url = self.base + path
         path = filepath or '.'

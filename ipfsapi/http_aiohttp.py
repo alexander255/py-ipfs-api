@@ -202,6 +202,8 @@ class HTTPClient(http.HTTPClientBase):
 
 
 #XXX: Replace this by a streaming TAR/PAX parser implementation … sometime
+#     For some reason a micro-benchmark shows that this is still about 1.5x
+#     faster than using `requests` and blocking `tarfile` in the same thread.
 class _TarThread(threading.Thread):
 	def __init__(self, fileobj, path, compressed):
 		super().__init__()
