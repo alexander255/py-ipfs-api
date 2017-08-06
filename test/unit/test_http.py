@@ -20,7 +20,7 @@ try:
 except ImportError:
     import mock
 
-import ipfsapi.http
+import ipfsapi.http_requests
 import ipfsapi.exceptions
 
 
@@ -139,7 +139,7 @@ class TestHttp(unittest.TestCase):
     """
     def setUp(self):
         """Creates an instance of HTTPClient to test against."""
-        self.client = ipfsapi.http.HTTPClient(
+        self.client = ipfsapi.http_requests.HTTPClient(
             'localhost',
             5001,
             'api/v0')
@@ -214,9 +214,13 @@ class TestHttp(unittest.TestCase):
     def test_session(self):
         """Tests that a session is established and then closed."""
         with HTTMock(return_okay):
-            with self.client.session():
+            self.client.open()
+            try:
+                assert self.client._session is not None
                 res = self.client.request('/okay')
                 assert res == b'okay'
+            finally:
+                self.client.close()
             assert self.client._session is None
 
 def test_stream_close(mocker):

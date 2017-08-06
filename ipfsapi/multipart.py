@@ -102,6 +102,17 @@ def multipart_content_type(boundary, subtype='mixed'):
     return {'Content-Type': ctype}
 
 
+class IteratorFileObj(io.IOBase):
+    def __init__(self, iterator):
+        self.iterator = iter(iterator)
+    
+    def read(self, n=-1):
+        try:
+            return bytes(next(self.iterator))
+        except StopIteration:
+            return b""
+
+
 class BodyGenerator(object):
     """Generators for creating the body of a :mimetype:`multipart/*`
     HTTP request.
@@ -575,7 +586,7 @@ def stream_files(files, chunk_size=default_chunk_size):
     """
     stream = FileStream(files, chunk_size=chunk_size)
 
-    return stream.body(), stream.headers
+    return IteratorFileObj(stream.body()), stream.headers
 
 
 def stream_directory(directory,
@@ -604,7 +615,11 @@ def stream_directory(directory,
                              patterns=patterns,
                              chunk_size=chunk_size)
 
-    return stream.body(), stream.headers
+    body = stream.body()
+    if not isinstance(body, six.binary_type):
+        body = IteratorFileObj(body)
+
+    return body, stream.headers
 
 
 def stream_filesystem_node(path,

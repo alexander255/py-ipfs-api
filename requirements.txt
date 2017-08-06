@@ -1,2 +1,5 @@
 requests>=2.2.1
 six
+
+aiohttp>=2.0         ; python_version >= '3.5'
+async_generator>=1.5 ; python_version >= '3.5'

@@ -8,9 +8,10 @@ Classes:
 from __future__ import absolute_import
 
 import os
+import sys
 import warnings
 
-from . import http, multipart, utils, exceptions, encoding
+from . import multipart, utils, exceptions, encoding
 
 DEFAULT_HOST = str(os.environ.get("PY_IPFSAPI_DEFAULT_HOST", 'localhost'))
 DEFAULT_PORT = int(os.environ.get("PY_IPFSAPI_DEFAULT_PORT", 5001))
@@ -46,8 +47,117 @@ def assert_version(version, minimum=VERSION_MINIMUM, maximum=VERSION_MAXIMUM):
         raise exceptions.VersionMismatch(version, minimum, maximum)
 
 
+if sys.version_info >= (3, 4, 0):
+    import asyncio
+    
+    class _Awaitable:
+        def __init__(self, coro, value_callback=lambda v: v):
+            if hasattr(coro, "__await__"):
+                self.__coro = coro.__await__()
+            else:
+                self.__coro = iter(coro)
+            
+            self.__value_callback = value_callback
+        
+        def __await__(self):
+            return self
+        
+        def __iter__(self):
+            return self
+        
+        def __next__(self):
+            return self.send(None)
+        
+        def send(self, value):
+            try:
+                return self.__coro.send(value)
+            except StopIteration as error:
+                raise StopIteration(self.__value_callback(error.value))
+        
+        def close(self):
+            self.__coro.close()
+            raise GeneratorExit()
+        
+        def throw(self, *args):
+            try:
+                return self.__coro.throw(*args)
+            except StopIteration as error:
+                raise StopIteration(self.__value_callback(error.value))
+    
+    # Equivalent of the `connect()` function for `aio=True` in Python 2.7
+    # compatible syntax, as an extra feature this overloads the `async with`
+    # syntax to do the version / connection check during `__aenter__()`
+    class connect_async:
+        """
+        Asynchronously create a new :class:`~ipfsapi.Client` instance and
+        connect to the daemon to validate that its version is supported.
+        
+        It is recommended to use the result of this function using an
+        ``async with`` statement:
+        
+        .. code-block:: python
+        
+            async with ipfsapi.connect_async() as client:
+                // Do something with `client`
+        
+        This way an :class:`aiohttp.ClientSession` will be maintained during the
+        lifetime of your client connection to speed up requests.
+        
+        If you need to store the client object between uses, you may use the
+        following syntax instead:
+        
+        .. code-block:: python
+        
+            client = await ipfsapi.connect_async(session=True)
+            // Do something with `client`
+            client.close()
+        
+        Raises
+        ------
+        ~ipfsapi.exceptions.VersionMismatch
+        ~ipfsapi.exceptions.ErrorResponse
+        ~ipfsapi.exceptions.ConnectionError
+        ~ipfsapi.exceptions.ProtocolError
+        ~ipfsapi.exceptions.StatusError
+        ~ipfsapi.exceptions.TimeoutError
+        
+        All parameters are identical to those passed to the constructor of the
+        :class:`~ipfsapi.Client` class.
+        
+        Returns
+        -------
+            coroutine ~ipfsapi.Client
+        """
+        
+        def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT,
+                     base=DEFAULT_BASE, chunk_size=multipart.default_chunk_size,
+                     session=False, **defaults):
+            # Create client instance
+            self._client = Client(host, port, base, chunk_size, session, aio=True, **defaults)
+        
+        def __await__(self):
+            return _Awaitable(self._client.version(), self.process_value)
+        
+        def __aenter__(self):
+            self._client.__enter__()
+            return _Awaitable(self._client.version(), self.process_value)
+        
+        @asyncio.coroutine
+        def __aexit__(self, *exc):
+            self._client.__exit__(*exc)
+        
+        def close(self):
+            self._client.__exit__()
+        
+        def process_value(self, version_data):
+            # Validate version number
+            assert_version(version_data['Version'])
+            
+            return self._client
+
+
 def connect(host=DEFAULT_HOST, port=DEFAULT_PORT, base=DEFAULT_BASE,
-            chunk_size=multipart.default_chunk_size, **defaults):
+            chunk_size=multipart.default_chunk_size, session=False, **defaults):
     """Create a new :class:`~ipfsapi.Client` instance and connect to the
     daemon to validate that its version is supported.
 
@@ -60,7 +170,6 @@ def connect(host=DEFAULT_HOST, port=DEFAULT_PORT, base=DEFAULT_BASE,
     ~ipfsapi.exceptions.StatusError
     ~ipfsapi.exceptions.TimeoutError
 
-
     All parameters are identical to those passed to the constructor of the
     :class:`~ipfsapi.Client` class.
 
@@ -69,7 +178,7 @@ def connect(host=DEFAULT_HOST, port=DEFAULT_PORT, base=DEFAULT_BASE,
         ~ipfsapi.Client
     """
     # Create client instance
-    client = Client(host, port, base, chunk_size, **defaults)
+    client = Client(host, port, base, chunk_size, session, aio=False, **defaults)
 
     # Query version number from daemon and validate it
     assert_version(client.version()['Version'])
@@ -119,18 +228,43 @@ class Client(object):
         Path of the deamon's API (currently always ``api/v0``)
     chunk_size : int
         The size of the chunks to break uploaded files and text content into
+    session : bool
+        Open an HTTP connection pool to cache connections between individual
+        API requests? You must close the pool afterwards using
+        :meth:`~ipfsapi.Client.close`.
+    aio : bool
+        Should API access be done using blocking I/O (the default) or
+        asynchronously using the Python `asyncio` module (Python 3 only)?
     """
-
-    _clientfactory = http.HTTPClient
 
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT,
                  base=DEFAULT_BASE, chunk_size=multipart.default_chunk_size,
-                 **defaults):
+                 session=False, aio=False, **defaults):
         """Connects to the API port of an IPFS node."""
 
         self.chunk_size = chunk_size
 
-        self._client = self._clientfactory(host, port, base, **defaults)
+        if aio:
+            assert sys.version_info >= (3, 5, 0)
+            from . import http_aiohttp as http
+        else:
+            from . import http_requests as http
+        self._client = http.HTTPClient(host, port, base, **defaults)
+
+        if session:
+            self._client.open()
+
+    # Delegate context manager to protocol manager
+    def __enter__(self):
+        self._client.open()
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def close(self):
+        """Close the cached HTTP connection pool if it is currently open."""
+        self._client.close()
 
     def add(self, files, recursive=False, pattern='**', *args, **kwargs):
         """Add a file, or directory of files to IPFS.
@@ -662,7 +796,7 @@ class Client(object):
         """
         kwargs.setdefault("opts", {"create": create})
 
-        args = ((root, name, ref),)
+        args = (root, name, ref)
         return self._client.request('/object/patch/add-link', args,
                                     decoder='json', **kwargs)
 
@@ -690,7 +824,7 @@ class Client(object):
         -------
             dict : Hash of new object
         """
-        args = ((root, link),)
+        args = (root, link)
         return self._client.request('/object/patch/rm-link', args,
                                     decoder='json', **kwargs)
 
