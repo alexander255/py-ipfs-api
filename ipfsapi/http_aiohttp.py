@@ -100,7 +100,7 @@ class HTTPClient(http.HTTPClientBase):
 	
 	def open(self):
 		if self._session is None:
-			self._session = aiohttp.ClientSession()
+			self._session = aiohttp.ClientSession(loop=self.loop)
 	
 	def close(self):
 		if self._session is not None:
@@ -113,7 +113,7 @@ class HTTPClient(http.HTTPClientBase):
 			if self._session:
 				response = await self._session.request(method, url, **kwargs)
 			else:
-				async with aiohttp.ClientSession() as session:
+				async with aiohttp.ClientSession(loop=self.loop) as session:
 					response = await session.request(method, url, **kwargs)
 		except (aiohttp.ClientConnectorError, aiohttp.ServerDisconnectedError) as error:
 			raise exceptions.ConnectionError(error) from error

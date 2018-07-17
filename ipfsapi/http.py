@@ -60,6 +60,9 @@ class HTTPClientBase(object):
 
         self.base = '%s:%s/%s' % (host, port, base)
 
+        #PY2: No support for kw-only arguments
+        self.loop = defaults.pop('loop') if 'loop' in defaults else None
+
         self.defaults = defaults
         self._session = None
 

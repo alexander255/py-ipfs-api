@@ -131,9 +131,10 @@ if sys.version_info >= (3, 4, 0):
         
         def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT,
                      base=DEFAULT_BASE, chunk_size=multipart.default_chunk_size,
-                     session=False, **defaults):
+                     session=False, loop=None, **defaults):
             # Create client instance
-            self._client = Client(host, port, base, chunk_size, session, aio=True, **defaults)
+            self._client = Client(host, port, base, chunk_size, session,
+                                  aio=True, loop=loop, **defaults)
         
         def __await__(self):
             return _Awaitable(self._client.version(), self.process_value)
@@ -234,12 +235,15 @@ class Client(object):
         :meth:`~ipfsapi.Client.close`.
     aio : bool
         Should API access be done using blocking I/O (the default) or
-        asynchronously using the Python `asyncio` module (Python 3 only)?
+        asynchronously using the (EXPERIMENTAL Python-3.5+ only!) `asyncio`
+        Python module support?
+    loop : asyncio.AbstractEventLoop
+        The event loop to use if using non-blocking I/O
     """
 
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT,
                  base=DEFAULT_BASE, chunk_size=multipart.default_chunk_size,
-                 session=False, aio=False, **defaults):
+                 session=False, aio=False, loop=None, **defaults):
         """Connects to the API port of an IPFS node."""
 
         self.chunk_size = chunk_size
@@ -247,6 +251,7 @@ class Client(object):
         if aio:
             assert sys.version_info >= (3, 5, 0)
             from . import http_aiohttp as http
+            defaults['loop'] = loop
         else:
             from . import http_requests as http
         self._client = http.HTTPClient(host, port, base, **defaults)
